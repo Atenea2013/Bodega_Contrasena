@@ -1,0 +1,174 @@
+<script setup>
+import { ref, onMounted } from 'vue';
+import axios from 'axios';
+
+// Configuración API
+const api = axios.create({
+    baseURL: 'http://127.0.0.1:8000/api',
+    headers: { 'Content-Type': 'application/json' }
+});
+
+// Variables
+const token = ref(localStorage.getItem('token'));
+const credentials = ref([]);
+const statusMsg = ref(''); // Barra de mensajes
+const view = ref('login');
+
+// Variables Formularios
+const email = ref('');
+const password = ref('');
+const registerName = ref('');
+const newSite = ref('');
+const newUser = ref('');
+const newPass = ref('');
+
+// --- FUNCIÓN BORRAR (SIN CONFIRMACIÓN - ACCIÓN DIRECTA) ---
+const remove = async (id) => {
+    statusMsg.value = `Intentando borrar ID ${id}...`; // Feedback visual
+
+    try {
+        await api.delete(`/credentials/${id}`, { 
+            headers: { Authorization: `Bearer ${token.value}` } 
+        });
+        
+        // Actualizar lista visualmente
+        credentials.value = credentials.value.filter(c => c.id !== id);
+        statusMsg.value = `¡Credencial eliminada!`;
+        
+        // Limpiar mensaje a los 2 segundos
+        setTimeout(() => statusMsg.value = '', 2000);
+    } catch (e) {
+        console.error(e);
+        statusMsg.value = "ERROR AL BORRAR. Revisa la consola (F12).";
+    }
+};
+
+// --- FUNCIÓN REVELAR (OJO) ---
+const togglePass = async (cred) => {
+    if (cred.showPass) { cred.showPass = false; return; }
+    
+    if (!cred.realPass) {
+        try {
+            const res = await api.get(`/credentials/${cred.id}/reveal`, {
+                headers: { Authorization: `Bearer ${token.value}` }
+            });
+            cred.realPass = res.data.plain_password;
+        } catch (e) { statusMsg.value = "Error al desencriptar"; return; }
+    }
+    cred.showPass = true;
+};
+
+// --- OTRAS FUNCIONES ---
+const login = async () => {
+    try {
+        const res = await api.post('/login', { email: email.value, password: password.value });
+        token.value = res.data.token;
+        localStorage.setItem('token', token.value);
+        loadData();
+    } catch (e) { statusMsg.value = 'Login falló'; }
+};
+
+const register = async () => {
+    try {
+        await api.post('/register', { name: registerName.value, email: email.value, password: password.value });
+        statusMsg.value = 'Registrado. Entra ahora.'; view.value = 'login';
+    } catch (e) { statusMsg.value = 'Error registro'; }
+};
+
+const loadData = async () => {
+    try {
+        const res = await api.get('/credentials', { headers: { Authorization: `Bearer ${token.value}` } });
+        credentials.value = res.data.map(c => ({ ...c, showPass: false, realPass: '' }));
+        view.value = 'dashboard';
+    } catch (e) { statusMsg.value = 'Sesión expirada'; }
+};
+
+const save = async () => {
+    try {
+        await api.post('/credentials', {
+            site_name: newSite.value, account_user: newUser.value, password: newPass.value
+        }, { headers: { Authorization: `Bearer ${token.value}` } });
+        newSite.value = ''; newUser.value = ''; newPass.value = '';
+        loadData();
+        statusMsg.value = '¡Guardado!';
+    } catch (e) { statusMsg.value = 'Error al guardar'; }
+};
+
+const logout = async () => {
+    token.value = null; localStorage.removeItem('token'); view.value = 'login';
+};
+
+onMounted(() => { if (token.value) loadData(); });
+</script>
+
+<template>
+  <div class="app-container">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px;">
+        <h1 style="margin:0;">🔐 Bóveda</h1>
+        <div v-if="statusMsg" style="background:orange; color:black; padding:5px 10px; border-radius:4px; font-weight:bold;">
+            {{ statusMsg }}
+        </div>
+    </div>
+
+    <div v-if="!token" class="auth-box">
+        <div v-if="view === 'login'">
+            <h2>Entrar</h2>
+            <input v-model="email" placeholder="Email"><input v-model="password" type="password" placeholder="Pass">
+            <button @click="login" class="btn-primary">Login</button>
+            <p @click="view = 'register'" class="link">Crear Cuenta</p>
+        </div>
+        <div v-else>
+            <h2>Registro</h2>
+            <input v-model="registerName" placeholder="Nombre"><input v-model="email" placeholder="Email"><input v-model="password" type="password" placeholder="Pass">
+            <button @click="register" class="btn-success">Registrar</button>
+            <p @click="view = 'login'" class="link">Volver</p>
+        </div>
+    </div>
+
+    <div v-else>
+        <div class="top-bar">
+            <button @click="logout" class="btn-danger" style="width:auto;">Salir</button>
+        </div>
+
+        <div class="card" style="margin-bottom:20px;">
+            <h3>Nueva Credencial</h3>
+            <input v-model="newSite" placeholder="Sitio"><input v-model="newUser" placeholder="Usuario"><input v-model="newPass" type="password" placeholder="Clave Real">
+            <button @click="save" class="btn-primary">Guardar y Cifrar</button>
+        </div>
+
+        <div class="card">
+            <h3>Mis Claves</h3>
+            <div v-for="c in credentials" :key="c.id" class="item">
+                <div style="flex:1">
+                    <span style="background:#555; color:#fff; padding:2px 4px; border-radius:3px; font-size:10px;">ID: {{c.id}}</span>
+                    <strong> {{ c.site_name }}</strong><br>
+                    <small>{{ c.account_user }}</small>
+                </div>
+                
+                <div style="flex:1; text-align:center;">
+                    <code v-if="c.showPass" style="color:yellow; font-size:1.1em;">{{ c.realPass }}</code>
+                    <span v-else>••••••</span>
+                </div>
+
+                <div style="width:90px; text-align:right;">
+                    <button @click="togglePass(c)" style="width:40px; margin-right:5px;" title="Ver">👁️</button>
+                    <button @click="remove(c.id)" style="background:#dc2626; color:white; width:40px;" title="Borrar">🗑️</button>
+                </div>
+            </div>
+        </div>
+    </div>
+  </div>
+</template>
+
+<style>
+body { background: #111; color: white; font-family: sans-serif; padding: 20px; }
+.app-container { max-width: 600px; margin: 0 auto; }
+.auth-box, .card { background: #222; padding: 20px; border-radius: 10px; margin-bottom: 20px; border: 1px solid #444; }
+input { width: 100%; padding: 8px; margin: 5px 0; background: #333; border: 1px solid #555; color: white; box-sizing: border-box; }
+button { width: 100%; padding: 8px; cursor: pointer; border:none; border-radius: 4px; }
+.btn-primary { background: #2563eb; color: white; }
+.btn-success { background: #059669; color: white; }
+.btn-danger { background: #dc2626; color: white; }
+.item { display: flex; align-items: center; justify-content: space-between; background: #333; padding: 10px; margin-bottom: 5px; border-radius: 5px; }
+.link { color: #60a5fa; cursor: pointer; text-decoration: underline; text-align: center; }
+</style>

@@ -1,0 +1,243 @@
+<script setup>
+import { ref, onMounted } from 'vue';
+import axios from 'axios';
+
+// Configuración API
+const api = axios.create({
+    baseURL: 'http://127.0.0.1:8000/api',
+    headers: { 'Content-Type': 'application/json' }
+});
+
+// Variables de Estado
+const token = ref(localStorage.getItem('token'));
+const credentials = ref([]);
+const view = ref('login');
+const statusMsg = ref(''); // Mensaje de estado temporal
+
+// Variables Formularios
+const email = ref('');
+const password = ref('');
+const registerName = ref('');
+const newSite = ref('');
+const newUser = ref('');
+const newPass = ref('');
+
+// --- FUNCIÓN BORRAR ---
+const remove = async (id) => {
+    statusMsg.value = `Borrando ID ${id}...`;
+    try {
+        await api.delete(`/credentials/${id}`, { 
+            headers: { Authorization: `Bearer ${token.value}` } 
+        });
+        credentials.value = credentials.value.filter(c => c.id !== id);
+        statusMsg.value = `¡Eliminado!`;
+        setTimeout(() => statusMsg.value = '', 2000);
+    } catch (e) {
+        console.error(e);
+        statusMsg.value = "Error al borrar.";
+    }
+};
+
+// --- FUNCIÓN REVELAR (OJO) ---
+const togglePass = async (cred) => {
+    if (cred.showPass) { cred.showPass = false; return; }
+    if (!cred.realPass) {
+        try {
+            const res = await api.get(`/credentials/${cred.id}/reveal`, {
+                headers: { Authorization: `Bearer ${token.value}` }
+            });
+            cred.realPass = res.data.plain_password;
+        } catch (e) { statusMsg.value = "Error al desencriptar"; return; }
+    }
+    cred.showPass = true;
+};
+
+// --- OTRAS FUNCIONES (Login, Registro, Carga) ---
+const login = async () => {
+    try {
+        const res = await api.post('/login', { email: email.value, password: password.value });
+        token.value = res.data.token;
+        localStorage.setItem('token', token.value);
+        loadData();
+    } catch (e) { alert('Credenciales incorrectas'); }
+};
+
+const register = async () => {
+    try {
+        await api.post('/register', { name: registerName.value, email: email.value, password: password.value });
+        alert('Registrado. Inicia sesión.'); view.value = 'login';
+    } catch (e) { alert('Error registro'); }
+};
+
+const loadData = async () => {
+    try {
+        const res = await api.get('/credentials', { headers: { Authorization: `Bearer ${token.value}` } });
+        credentials.value = res.data.map(c => ({ ...c, showPass: false, realPass: '' }));
+        view.value = 'dashboard';
+    } catch (e) { statusMsg.value = 'Sesión expirada'; }
+};
+
+const save = async () => {
+    try {
+        await api.post('/credentials', {
+            site_name: newSite.value, account_user: newUser.value, password: newPass.value
+        }, { headers: { Authorization: `Bearer ${token.value}` } });
+        newSite.value = ''; newUser.value = ''; newPass.value = '';
+        loadData();
+        statusMsg.value = '¡Guardado y Cifrado!';
+        setTimeout(() => statusMsg.value = '', 3000);
+    } catch (e) { alert('Error al guardar'); }
+};
+
+const logout = async () => {
+    token.value = null; localStorage.removeItem('token'); view.value = 'login';
+};
+
+onMounted(() => { if (token.value) loadData(); });
+</script>
+
+<template>
+  <div class="app-container">
+    <header>
+        <h1>🔐 Bóveda Segura</h1>
+        <p class="subtitle">Arquitectura Desacoplada & Cifrado AES-256</p>
+        <div v-if="statusMsg" class="status-bar">{{ statusMsg }}</div>
+    </header>
+
+    <div v-if="!token" class="auth-box">
+        <div v-if="view === 'login'">
+            <h2>Iniciar Sesión</h2>
+            <input v-model="email" placeholder="Email" type="email">
+            <input v-model="password" placeholder="Contraseña" type="password">
+            <button @click="login" class="btn-primary">Entrar a la Bóveda</button>
+            <p @click="view = 'register'" class="link">¿No tienes cuenta? Regístrate</p>
+        </div>
+        <div v-else>
+            <h2>Crear Cuenta</h2>
+            <input v-model="registerName" placeholder="Nombre">
+            <input v-model="email" placeholder="Email" type="email">
+            <input v-model="password" placeholder="Contraseña" type="password">
+            <button @click="register" class="btn-success">Registrarse</button>
+            <p @click="view = 'login'" class="link">Volver al Login</p>
+        </div>
+    </div>
+
+    <div v-else class="dashboard">
+        <div class="top-bar">
+            <span class="user-badge">Usuario Autenticado ✅</span>
+            <button @click="logout" class="btn-danger">Cerrar Sesión</button>
+        </div>
+
+        <div class="grid">
+            <div class="card form-card">
+                <h3>🛡️ Proteger Nueva Credencial</h3>
+                <label>Sitio Web</label>
+                <input v-model="newSite" placeholder="Ej: Netflix, Banco...">
+                
+                <label>Usuario / Email</label>
+                <input v-model="newUser" placeholder="Ej: juan@gmail.com">
+                
+                <label>Contraseña Real</label>
+                <input v-model="newPass" placeholder="Escribe la clave secreta..." type="password">
+                
+                <button @click="save" class="btn-action">🔒 Cifrar y Guardar</button>
+            </div>
+
+            <div class="card list-card">
+                <h3>📂 Mis Credenciales Cifradas</h3>
+                <div v-if="credentials.length === 0" class="empty-msg">
+                    No hay claves guardadas.
+                </div>
+                
+                <div v-for="c in credentials" :key="c.id" class="item">
+                    <div class="item-info">
+                        <strong>{{ c.site_name }}</strong>
+                        <span class="user-email">{{ c.account_user }}</span>
+                    </div>
+                    
+                    <div class="encryption-box">
+                        <span v-if="!c.showPass" class="dots">•••••••••••••</span>
+                        <code v-else class="real-pass">{{ c.realPass }}</code>
+                        <span class="aes-tag">AES-256</span>
+                    </div>
+
+                    <div class="actions">
+                        <button @click="togglePass(c)" class="btn-icon view" title="Ver/Ocultar">
+                            {{ c.showPass ? '🙈' : '👁️' }}
+                        </button>
+                        <button @click="remove(c.id)" class="btn-icon delete" title="Borrar">
+                            🗑️
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+  </div>
+</template>
+
+<style>
+/* --- ESTÉTICA AZUL ORIGINAL --- */
+body { margin: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0f172a; color: #e2e8f0; }
+.app-container { max-width: 1100px; margin: 0 auto; padding: 30px 20px; }
+
+/* Encabezados */
+h1 { text-align: center; color: #38bdf8; margin-bottom: 10px; font-size: 2.5rem; }
+.subtitle { text-align: center; color: #94a3b8; margin-bottom: 40px; }
+h2 { color: #e2e8f0; text-align: center; margin-bottom: 25px; }
+h3 { color: #f1f5f9; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
+label { display: block; margin-bottom: 8px; color: #cbd5e1; font-weight: 500; }
+
+/* Inputs y Botones */
+input { width: 100%; padding: 12px; margin-bottom: 20px; background: #334155; border: 1px solid #475569; color: white; border-radius: 8px; box-sizing: border-box; font-size: 1rem; transition: border-color 0.3s; }
+input:focus { border-color: #38bdf8; outline: none; }
+button { width: 100%; padding: 12px; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 1rem; transition: background-color 0.2s; }
+.btn-primary { background: #3b82f6; color: white; } .btn-primary:hover { background: #2563eb; }
+.btn-success { background: #10b981; color: white; } .btn-success:hover { background: #059669; }
+.btn-danger { background: #ef4444; color: white; width: auto; padding: 10px 20px; } .btn-danger:hover { background: #dc2626; }
+.btn-action { background: #6366f1; color: white; font-size: 1.1rem; } .btn-action:hover { background: #4f46e5; }
+
+/* Cajas y Layout */
+.auth-box { max-width: 400px; margin: 50px auto; background: #1e293b; padding: 30px; border-radius: 12px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.3); }
+.link { color: #38bdf8; cursor: pointer; text-align: center; margin-top: 15px; display: block; }
+.link:hover { text-decoration: underline; }
+
+.top-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; background: #1e293b; padding: 15px 25px; border-radius: 12px; }
+.user-badge { font-weight: 500; color: #e2e8f0; }
+.status-bar { position: fixed; top: 20px; right: 20px; background: #3b82f6; color: white; padding: 10px 20px; border-radius: 8px; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.2); z-index: 100; animation: slideIn 0.3s ease-out; }
+@keyframes slideIn { from { transform: translateY(-20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+
+/* --- GRID DE 2 COLUMNAS (Derecha más grande) --- */
+.grid { display: grid; grid-template-columns: 40% 1fr; gap: 30px; align-items: start; }
+.card { background: #1e293b; padding: 25px; border-radius: 12px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.2); }
+.form-card { border-top: 4px solid #6366f1; }
+.list-card { border-top: 4px solid #f59e0b; }
+
+/* Lista de Items */
+.empty-msg { text-align: center; color: #94a3b8; padding: 20px; font-style: italic; }
+.item { background: #334155; margin-bottom: 15px; padding: 15px; border-radius: 10px; display: flex; align-items: center; justify-content: space-between; gap: 15px; transition: transform 0.2s; }
+.item:hover { transform: translateY(-2px); }
+.item-info { display: flex; flex-direction: column; width: 25%; }
+.item-info strong { font-size: 1.1rem; color: #f1f5f9; }
+.user-email { font-size: 0.9rem; color: #94a3b8; margin-top: 4px; }
+
+/* Caja de Cifrado */
+.encryption-box { flex: 1; background: #0f172a; padding: 12px; border-radius: 8px; text-align: center; overflow: hidden; position: relative; display: flex; align-items: center; justify-content: center; border: 1px solid #1e293b; }
+.dots { color: #64748b; letter-spacing: 3px; font-size: 1.2rem; }
+.real-pass { color: #facc15; font-family: 'Fira Code', monospace; font-size: 1.1rem; }
+.aes-tag { position: absolute; bottom: 2px; right: 5px; font-size: 0.6rem; color: #475569; }
+
+/* Botones de Acción (Iconos) */
+.actions { display: flex; gap: 8px; }
+.btn-icon { width: 42px; height: 42px; padding: 0; display: flex; align-items: center; justify-content: center; background: #475569; font-size: 1.3rem; border-radius: 8px; }
+.btn-icon:hover { background: #64748b; }
+.delete:hover { background: #b91c1c; }
+.view:hover { background: #1e40af; }
+
+@media (max-width: 768px) {
+    .grid { grid-template-columns: 1fr; } /* En móviles, una debajo de otra */
+    .item { flex-direction: column; align-items: stretch; text-align: center; }
+    .item-info { width: 100%; margin-bottom: 10px; }
+    .actions { justify-content: center; margin-top: 10px; }
+}
+</style>
