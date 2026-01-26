@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y \
     && docker-php-ext-install zip pdo_mysql
 
 # 2. Habilitar mod_rewrite de Apache para las URLs de Laravel
-RUN a2enmod rewrite
+RUN a2enmod rewrite headers
 
 # 3. Configurar el directorio raíz de Apache para que apunte a /public
 ENV APACHE_DOCUMENT_ROOT /var/www/html/public
