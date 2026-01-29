@@ -2,10 +2,6 @@
 import { ref, onMounted } from 'vue';
 import axios from 'axios';
 
-// --- IMPORTACIÓN DE IMAGEN ---
-// Asegúrate de que 'unicaba.png' esté en la misma carpeta (src)
-import logoUnicaba from './unicaba.png'; 
-
 // Configuración API
 const api = axios.create({
     baseURL: import.meta.env.VITE_API_URL || 'http://127.0.0.1:8000/api',
@@ -103,15 +99,13 @@ onMounted(() => { if (token.value) loadData(); });
 <template>
   <div class="app-container">
     <header>
-        <h1>MUCHAS GRACIAS!!</h1>
-        <p class="subtitle">PREGUNTAS</p>
+        <h1>🔐 Bóveda Segura</h1>
+        <p class="subtitle">Arquitectura Desacoplada & Cifrado AES-256</p>
         <div v-if="statusMsg" class="status-bar">{{ statusMsg }}</div>
     </header>
 
     <div v-if="!token" class="auth-box">
         <div v-if="view === 'login'">
-            <img :src="logoUnicaba" alt="Logo Unicaba" class="login-logo" />
-            
             <h2>Iniciar Sesión</h2>
             <input v-model="email" placeholder="Email" type="email">
             <input v-model="password" placeholder="Contraseña" type="password">
@@ -240,17 +234,8 @@ button { width: 100%; padding: 12px; border: none; border-radius: 8px; cursor: p
 .delete:hover { background: #b91c1c; }
 .view:hover { background: #1e40af; }
 
-/* --- NUEVO: ESTILOS PARA LA IMAGEN --- */
-.login-logo {
-    display: block;       /* Comportamiento de bloque para permitir margenes */
-    margin: 0 auto 20px;  /* 0 arriba, Auto lados (centrado), 20px abajo */
-    max-width: 150px;     /* Ancho máximo para que no rompa la caja */
-    height: auto;         /* Altura automática para mantener proporción */
-    border-radius: 8px;   /* Opcional: bordes redondeados */
-}
-
 @media (max-width: 768px) {
-    .grid { grid-template-columns: 1fr; } 
+    .grid { grid-template-columns: 1fr; } /* En móviles, una debajo de otra */
     .item { flex-direction: column; align-items: stretch; text-align: center; }
     .item-info { width: 100%; margin-bottom: 10px; }
     .actions { justify-content: center; margin-top: 10px; }
